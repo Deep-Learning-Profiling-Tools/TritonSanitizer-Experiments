@@ -343,7 +343,9 @@ class TestRunner:
         env.update(env_config["env"])
 
         if repo_name == "tritonbench" and config.get("special_handling"):
-            cmd = ["python", str(test_file)]
+            # Use relative path from test_dir for tritonbench
+            relative_path = test_file.relative_to(Path(config["test_dir"]))
+            cmd = ["python", str(relative_path)]
         else:
             if test_function:
                 cmd = ["pytest", "-s", "--assert=plain", f"{test_file.name}::{test_function}"]
