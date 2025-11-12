@@ -1,0 +1,12 @@
+[submodule "submodules/triton-viz"]
+	path = submodules/triton-viz
+	url = https://github.com/Deep-Learning-Profiling-Tools/triton-viz.git
+[submodule "submodules/Liger-Kernel"]
+	path = submodules/Liger-Kernel
+	url = https://github.com/linkedin/Liger-Kernel.git
+[submodule "submodules/FlagGems"]
+	path = submodules/FlagGems
+	url = https://github.com/FlagOpen/FlagGems.git
+[submodule "submodules/TritonBench"]
+	path = submodules/TritonBench
+	url = https://github.com/thunlp/TritonBench.git
