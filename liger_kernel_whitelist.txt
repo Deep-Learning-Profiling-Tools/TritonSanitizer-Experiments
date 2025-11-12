@@ -1,0 +1,29 @@
+# Liger-Kernel test whitelist
+# Format: test_file.py::test_function
+test_fused_linear_jsd.py::test_correctness_functional
+test_fused_linear_jsd.py::test_correctness_with_ignore_index
+test_rms_norm.py::test_correctness
+test_kl_div.py::test_correctness_not_last
+test_fused_linear_jsd.py::test_correctness
+test_jsd.py::test_correctness_not_last
+test_kl_div.py::test_correctness
+test_jsd.py::test_correctness_with_beta
+test_jsd.py::test_correctness_functional
+test_cross_entropy.py::test_correctness_with_label_smoothing_with_ignore_index_once
+test_jsd.py::test_correctness
+test_cross_entropy.py::test_correctness
+test_cross_entropy.py::test_correctness_with_ignore_index
+test_cross_entropy.py::test_correctness_with_label_smoothing_once
+test_geglu.py::test_correctness
+test_swiglu.py::test_correctness_llamamlp
+test_fused_linear_jsd.py::test_correctness_all_ignored
+test_fused_linear_cross_entropy.py::test_correctness_functional
+test_swiglu.py::test_correctness_phi3mlp
+test_rms_norm.py::test_correctness_functional
+test_cross_entropy.py::test_correctness_not_last_layer
+test_layer_norm.py::test_liger_layer_norm
+test_cross_entropy.py::test_correctness_functional
+test_geglu.py::test_correctness_functional
+test_swiglu.py::test_correctness_functional
+test_layer_norm.py::test_liger_layer_norm_functional
+test_jsd.py::test_correctness_with_all_indices_ignored
