@@ -140,6 +140,37 @@ ENV_CONFIGS = OrderedDict([
             "PYTORCH_NO_CUDA_MEMORY_CACHING": "1"
         },
         "command_prefix": "triton-sanitizer"
+    }),
+    # Kernel timing configurations (fixed env vars for timing comparison)
+    ("kernel_time_baseline", {
+        "group": "kernel_time_liger_kernel",
+        "name": "baseline",
+        "description": "Kernel timing: Baseline (no compile, with cache)",
+        "env": {
+            "TRITON_ALWAYS_COMPILE": "0",
+            "PYTORCH_NO_CUDA_MEMORY_CACHING": "0"
+        },
+        "command_prefix": ""
+    }),
+    ("kernel_time_compute_sanitizer", {
+        "group": "kernel_time_liger_kernel",
+        "name": "compute-sanitizer",
+        "description": "Kernel timing: Compute-sanitizer (no compile, with cache)",
+        "env": {
+            "TRITON_ALWAYS_COMPILE": "0",
+            "PYTORCH_NO_CUDA_MEMORY_CACHING": "0"
+        },
+        "command_prefix": "compute-sanitizer"
+    }),
+    ("kernel_time_triton_sanitizer", {
+        "group": "kernel_time_liger_kernel",
+        "name": "triton-sanitizer",
+        "description": "Kernel timing: Triton-sanitizer (no compile, with cache)",
+        "env": {
+            "TRITON_ALWAYS_COMPILE": "0",
+            "PYTORCH_NO_CUDA_MEMORY_CACHING": "0"
+        },
+        "command_prefix": "triton-sanitizer"
     })
 ])
 
@@ -553,7 +584,7 @@ def main():
     parser.add_argument(
         "--config-groups",
         nargs="+",
-        choices=["baseline", "compute_sanitizer", "triton_sanitizer", "all"],
+        choices=["baseline", "compute_sanitizer", "triton_sanitizer", "kernel_time_liger_kernel", "all"],
         default=["baseline"],
         help="Configuration groups to run"
     )
