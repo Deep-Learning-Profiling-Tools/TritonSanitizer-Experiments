@@ -1,12 +1,15 @@
 #!/bin/bash
-# Run Liger-Kernel tests with kernel timing configuration
-# This script uses runner.py with the kernel_time_liger_kernel config group
+# Run TritonBench tests with kernel timing configuration
+# This script uses runner.py with the kernel_time_tritonbench config group
 # which runs baseline, compute-sanitizer, and triton-sanitizer with:
 # TRITON_ALWAYS_COMPILE=0 and PYTORCH_NO_CUDA_MEMORY_CACHING=0
+#
+# Profiling is enabled for baseline and compute-sanitizer,
+# but disabled for triton-sanitizer (triton-viz has its own profiling).
 # triton-sanitizer also sets ENABLE_TIMING=1 for timing measurements.
 
 echo "========================================"
-echo "Running Liger-Kernel Kernel Time Tests"
+echo "Running TritonBench Kernel Time Tests"
 echo "========================================"
 echo ""
 
@@ -21,27 +24,27 @@ TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 echo "Timestamp: ${TIMESTAMP}"
 echo ""
 
-# Check for liger_kernel whitelist
-echo "Checking for Liger-Kernel whitelist..."
-if [ -f "liger_kernel_whitelist.txt" ]; then
-    echo "  ✓ Liger-Kernel whitelist detected"
+# Check for TritonBench whitelist
+echo "Checking for TritonBench whitelist..."
+if [ -f "tritonbench_whitelist.txt" ]; then
+    echo "  ✓ TritonBench whitelist detected"
     echo "    Will run only whitelisted tests"
 else
-    echo "  ⚠ No Liger-Kernel whitelist found, will run all tests"
+    echo "  ⚠ No TritonBench whitelist found, will run all tests"
 fi
 echo ""
 
 # Configuration
 echo "Configuration:"
-echo "  Config Group: kernel_time_liger_kernel"
-echo "  Repository: liger_kernel"
+echo "  Config Group: kernel_time_tritonbench"
+echo "  Repository: tritonbench"
 echo "  Environment Variables:"
 echo "    TRITON_ALWAYS_COMPILE=0"
 echo "    PYTORCH_NO_CUDA_MEMORY_CACHING=0"
 echo "  Sanitizers:"
-echo "    - baseline"
-echo "    - compute-sanitizer"
-echo "    - triton-sanitizer (ENABLE_TIMING=1)"
+echo "    - baseline (profiling enabled)"
+echo "    - compute-sanitizer (profiling enabled)"
+echo "    - triton-sanitizer (profiling disabled, uses triton-viz, ENABLE_TIMING=1)"
 echo ""
 
 # Base output directory
@@ -54,8 +57,8 @@ echo "========================================"
 echo ""
 
 python3 runner.py \
-    --repos liger_kernel \
-    --config-groups kernel_time_liger_kernel \
+    --repos tritonbench \
+    --config-groups kernel_time_tritonbench \
     --output-dir "${OUTPUT_BASE}"
 
 TEST_EXIT_CODE=$?
@@ -82,24 +85,18 @@ ANALYSIS_EXIT_CODE=$?
 
 if [ ${ANALYSIS_EXIT_CODE} -eq 0 ]; then
     echo ""
-    echo "Reordering CSV according to whitelist order..."
-    python3 reorder_csv.py "${OUTPUT_BASE}/kernel_timing_results.csv" "${OUTPUT_BASE}/kernel_timing_ordered.csv"
-    REORDER_EXIT_CODE=$?
-
-    echo ""
     echo "========================================"
     echo "Analysis Complete!"
     echo "========================================"
     echo ""
     echo "Results:"
-    echo "  CSV File (by test number): ${OUTPUT_BASE}/kernel_timing_results.csv"
-    echo "  CSV File (whitelist order): ${OUTPUT_BASE}/kernel_timing_ordered.csv"
-    echo "  Log files:                  ${OUTPUT_BASE}/kernel_time_liger_kernel/*/"
+    echo "  CSV File:  ${OUTPUT_BASE}/kernel_timing_results.csv (ordered by test number)"
+    echo "  Log files: ${OUTPUT_BASE}/kernel_time_tritonbench/*/"
     echo ""
-    echo "To view ordered CSV:"
-    echo "  cat ${OUTPUT_BASE}/kernel_timing_ordered.csv"
+    echo "To view CSV:"
+    echo "  cat ${OUTPUT_BASE}/kernel_timing_results.csv"
     echo "  or"
-    echo "  column -t -s, ${OUTPUT_BASE}/kernel_timing_ordered.csv | less -S"
+    echo "  column -t -s, ${OUTPUT_BASE}/kernel_timing_results.csv | less -S"
     echo ""
 else
     echo ""

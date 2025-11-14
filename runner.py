@@ -168,7 +168,43 @@ ENV_CONFIGS = OrderedDict([
         "description": "Kernel timing: Triton-sanitizer (no compile, with cache)",
         "env": {
             "TRITON_ALWAYS_COMPILE": "0",
-            "PYTORCH_NO_CUDA_MEMORY_CACHING": "0"
+            "PYTORCH_NO_CUDA_MEMORY_CACHING": "0",
+            "ENABLE_TIMING": "1"
+        },
+        "command_prefix": "triton-sanitizer"
+    }),
+    # Kernel timing configurations for TritonBench
+    ("kernel_time_tritonbench_baseline", {
+        "group": "kernel_time_tritonbench",
+        "name": "baseline",
+        "description": "TritonBench kernel timing: Baseline (no compile, with cache, profiling enabled)",
+        "env": {
+            "TRITON_ALWAYS_COMPILE": "0",
+            "PYTORCH_NO_CUDA_MEMORY_CACHING": "0",
+            "ENABLE_TRITON_PROFILER": "1"
+        },
+        "command_prefix": ""
+    }),
+    ("kernel_time_tritonbench_compute_sanitizer", {
+        "group": "kernel_time_tritonbench",
+        "name": "compute-sanitizer",
+        "description": "TritonBench kernel timing: Compute-sanitizer (no compile, with cache, profiling enabled)",
+        "env": {
+            "TRITON_ALWAYS_COMPILE": "0",
+            "PYTORCH_NO_CUDA_MEMORY_CACHING": "0",
+            "ENABLE_TRITON_PROFILER": "1"
+        },
+        "command_prefix": "compute-sanitizer"
+    }),
+    ("kernel_time_tritonbench_triton_sanitizer", {
+        "group": "kernel_time_tritonbench",
+        "name": "triton-sanitizer",
+        "description": "TritonBench kernel timing: Triton-sanitizer (no compile, with cache, profiling disabled)",
+        "env": {
+            "TRITON_ALWAYS_COMPILE": "0",
+            "PYTORCH_NO_CUDA_MEMORY_CACHING": "0",
+            "ENABLE_TRITON_PROFILER": "0",
+            "ENABLE_TIMING": "1"
         },
         "command_prefix": "triton-sanitizer"
     })
@@ -376,7 +412,13 @@ class TestRunner:
         if repo_name == "tritonbench" and config.get("special_handling"):
             # Use relative path from test_dir for tritonbench
             relative_path = test_file.relative_to(Path(config["test_dir"]))
-            cmd = ["python", str(relative_path)]
+            # Check if profiler should be enabled based on environment variable
+            if env.get("ENABLE_TRITON_PROFILER") == "1":
+                # Use wrapper script to enable profiling
+                wrapper_script = Path(__file__).parent / "tritonbench_profiler_wrapper.py"
+                cmd = ["python", str(wrapper_script), str(relative_path)]
+            else:
+                cmd = ["python", str(relative_path)]
         else:
             if test_function:
                 cmd = ["pytest", "-s", "--assert=plain", f"{test_file.name}::{test_function}"]
@@ -584,7 +626,7 @@ def main():
     parser.add_argument(
         "--config-groups",
         nargs="+",
-        choices=["baseline", "compute_sanitizer", "triton_sanitizer", "kernel_time_liger_kernel", "all"],
+        choices=["baseline", "compute_sanitizer", "triton_sanitizer", "kernel_time_liger_kernel", "kernel_time_tritonbench", "all"],
         default=["baseline"],
         help="Configuration groups to run"
     )
