@@ -141,14 +141,15 @@ ENV_CONFIGS = OrderedDict([
         },
         "command_prefix": "triton-sanitizer"
     }),
-    # Kernel timing configurations (fixed env vars for timing comparison)
+    # Kernel timing configurations for pytest-based repos (Liger-Kernel, FlagGems)
     ("kernel_time_baseline", {
         "group": "kernel_time_liger_kernel",
         "name": "baseline",
         "description": "Kernel timing: Baseline (no compile, with cache)",
         "env": {
             "TRITON_ALWAYS_COMPILE": "0",
-            "PYTORCH_NO_CUDA_MEMORY_CACHING": "0"
+            "PYTORCH_NO_CUDA_MEMORY_CACHING": "0",
+            "ENABLE_TRITON_PROFILER": "1"
         },
         "command_prefix": ""
     }),
@@ -158,7 +159,8 @@ ENV_CONFIGS = OrderedDict([
         "description": "Kernel timing: Compute-sanitizer (no compile, with cache)",
         "env": {
             "TRITON_ALWAYS_COMPILE": "0",
-            "PYTORCH_NO_CUDA_MEMORY_CACHING": "0"
+            "PYTORCH_NO_CUDA_MEMORY_CACHING": "0",
+            "ENABLE_TRITON_PROFILER": "1"
         },
         "command_prefix": "compute-sanitizer"
     }),
@@ -166,6 +168,40 @@ ENV_CONFIGS = OrderedDict([
         "group": "kernel_time_liger_kernel",
         "name": "triton-sanitizer",
         "description": "Kernel timing: Triton-sanitizer (no compile, with cache)",
+        "env": {
+            "TRITON_ALWAYS_COMPILE": "0",
+            "PYTORCH_NO_CUDA_MEMORY_CACHING": "0",
+            "ENABLE_TIMING": "1"
+        },
+        "command_prefix": "triton-sanitizer"
+    }),
+    # Generic kernel timing configurations for pytest-based repos
+    ("pytest_kernel_time_baseline", {
+        "group": "kernel_time",
+        "name": "baseline",
+        "description": "Kernel timing: Baseline (pytest, profiling enabled)",
+        "env": {
+            "TRITON_ALWAYS_COMPILE": "0",
+            "PYTORCH_NO_CUDA_MEMORY_CACHING": "0",
+            "ENABLE_TRITON_PROFILER": "1"
+        },
+        "command_prefix": ""
+    }),
+    ("pytest_kernel_time_compute_sanitizer", {
+        "group": "kernel_time",
+        "name": "compute-sanitizer",
+        "description": "Kernel timing: Compute-sanitizer (pytest, profiling enabled)",
+        "env": {
+            "TRITON_ALWAYS_COMPILE": "0",
+            "PYTORCH_NO_CUDA_MEMORY_CACHING": "0",
+            "ENABLE_TRITON_PROFILER": "1"
+        },
+        "command_prefix": "compute-sanitizer"
+    }),
+    ("pytest_kernel_time_triton_sanitizer", {
+        "group": "kernel_time",
+        "name": "triton-sanitizer",
+        "description": "Kernel timing: Triton-sanitizer (pytest, ENABLE_TIMING)",
         "env": {
             "TRITON_ALWAYS_COMPILE": "0",
             "PYTORCH_NO_CUDA_MEMORY_CACHING": "0",
@@ -204,6 +240,72 @@ ENV_CONFIGS = OrderedDict([
             "TRITON_ALWAYS_COMPILE": "0",
             "PYTORCH_NO_CUDA_MEMORY_CACHING": "0",
             "ENABLE_TRITON_PROFILER": "0",
+            "ENABLE_TIMING": "1"
+        },
+        "command_prefix": "triton-sanitizer"
+    }),
+    # Ablation study configurations
+    ("ablation_no_cache", {
+        "group": "ablation_studies",
+        "name": "no_cache",
+        "description": "Ablation study: No cache enabled (0,0,0,0)",
+        "env": {
+            "SANITIZER_ENABLE_SYMBOL_CACHE": "0",
+            "SANITIZER_ENABLE_LOOP_CACHE": "0",
+            "SANITIZER_ENABLE_GRID_CACHE": "0",
+            "SANITIZER_ENABLE_KERNEL_CACHE": "0",
+            "ENABLE_TIMING": "1"
+        },
+        "command_prefix": "triton-sanitizer"
+    }),
+    ("ablation_symbol_only", {
+        "group": "ablation_studies",
+        "name": "symbol_only",
+        "description": "Ablation study: Symbol cache only (1,0,0,0)",
+        "env": {
+            "SANITIZER_ENABLE_SYMBOL_CACHE": "1",
+            "SANITIZER_ENABLE_LOOP_CACHE": "0",
+            "SANITIZER_ENABLE_GRID_CACHE": "0",
+            "SANITIZER_ENABLE_KERNEL_CACHE": "0",
+            "ENABLE_TIMING": "1"
+        },
+        "command_prefix": "triton-sanitizer"
+    }),
+    ("ablation_symbol_loop", {
+        "group": "ablation_studies",
+        "name": "symbol_loop",
+        "description": "Ablation study: Symbol and loop cache (1,1,0,0)",
+        "env": {
+            "SANITIZER_ENABLE_SYMBOL_CACHE": "1",
+            "SANITIZER_ENABLE_LOOP_CACHE": "1",
+            "SANITIZER_ENABLE_GRID_CACHE": "0",
+            "SANITIZER_ENABLE_KERNEL_CACHE": "0",
+            "ENABLE_TIMING": "1"
+        },
+        "command_prefix": "triton-sanitizer"
+    }),
+    ("ablation_symbol_loop_grid", {
+        "group": "ablation_studies",
+        "name": "symbol_loop_grid",
+        "description": "Ablation study: Symbol, loop and grid cache (1,1,1,0)",
+        "env": {
+            "SANITIZER_ENABLE_SYMBOL_CACHE": "1",
+            "SANITIZER_ENABLE_LOOP_CACHE": "1",
+            "SANITIZER_ENABLE_GRID_CACHE": "1",
+            "SANITIZER_ENABLE_KERNEL_CACHE": "0",
+            "ENABLE_TIMING": "1"
+        },
+        "command_prefix": "triton-sanitizer"
+    }),
+    ("ablation_all_cache", {
+        "group": "ablation_studies",
+        "name": "all_cache",
+        "description": "Ablation study: All cache enabled (1,1,1,1)",
+        "env": {
+            "SANITIZER_ENABLE_SYMBOL_CACHE": "1",
+            "SANITIZER_ENABLE_LOOP_CACHE": "1",
+            "SANITIZER_ENABLE_GRID_CACHE": "1",
+            "SANITIZER_ENABLE_KERNEL_CACHE": "1",
             "ENABLE_TIMING": "1"
         },
         "command_prefix": "triton-sanitizer"
@@ -409,6 +511,13 @@ class TestRunner:
         env = os.environ.copy()
         env.update(env_config["env"])
 
+        # Add base directory to PYTHONPATH for pytest plugin
+        base_dir = str(Path(__file__).parent.absolute())
+        if "PYTHONPATH" in env:
+            env["PYTHONPATH"] = f"{base_dir}:{env['PYTHONPATH']}"
+        else:
+            env["PYTHONPATH"] = base_dir
+
         if repo_name == "tritonbench" and config.get("special_handling"):
             # Use relative path from test_dir for tritonbench
             relative_path = test_file.relative_to(Path(config["test_dir"]))
@@ -420,10 +529,18 @@ class TestRunner:
             else:
                 cmd = ["python", str(relative_path)]
         else:
+            # For pytest-based tests (Liger-Kernel, FlagGems)
             if test_function:
                 cmd = ["pytest", "-s", "--assert=plain", f"{test_file.name}::{test_function}"]
             else:
                 cmd = config["test_command"].split() + [test_file.name]
+
+            # Add pytest plugin for Triton profiling if enabled
+            if env.get("ENABLE_TRITON_PROFILER") == "1" and "pytest" in cmd[0]:
+                # Insert the plugin option after pytest command
+                plugin_path = Path(__file__).parent / "pytest_triton_profiler.py"
+                cmd.insert(1, "-p")
+                cmd.insert(2, "pytest_triton_profiler")
 
         command_prefix = env_config.get("command_prefix", "")
         if command_prefix:
@@ -626,7 +743,7 @@ def main():
     parser.add_argument(
         "--config-groups",
         nargs="+",
-        choices=["baseline", "compute_sanitizer", "triton_sanitizer", "kernel_time_liger_kernel", "kernel_time_tritonbench", "all"],
+        choices=["baseline", "compute_sanitizer", "triton_sanitizer", "kernel_time", "kernel_time_liger_kernel", "kernel_time_tritonbench", "ablation_studies", "all"],
         default=["baseline"],
         help="Configuration groups to run"
     )
