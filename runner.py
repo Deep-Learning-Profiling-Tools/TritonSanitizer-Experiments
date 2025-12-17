@@ -207,7 +207,7 @@ class TestRunner:
             # Check if profiler should be enabled based on environment variable
             if env.get("ENABLE_TRITON_PROFILER") == "1":
                 # Use wrapper script to enable profiling
-                wrapper_script = Path(__file__).parent / "tritonbench_profiler_wrapper.py"
+                wrapper_script = Path(__file__).parent / "utils" / "tritonbench_profiler_wrapper.py"
                 cmd = ["python", str(wrapper_script), str(relative_path)]
             else:
                 cmd = ["python", str(relative_path)]
@@ -221,9 +221,9 @@ class TestRunner:
             # Add pytest plugin for Triton profiling if enabled
             if env.get("ENABLE_TRITON_PROFILER") == "1" and "pytest" in cmd[0]:
                 # Insert the plugin option after pytest command
-                plugin_path = Path(__file__).parent / "pytest_triton_profiler.py"
+                plugin_path = Path(__file__).parent / "utils" / "pytest_triton_profiler.py"
                 cmd.insert(1, "-p")
-                cmd.insert(2, "pytest_triton_profiler")
+                cmd.insert(2, "utils.pytest_triton_profiler")
 
         command_prefix = env_config.get("command_prefix", "")
         if command_prefix:

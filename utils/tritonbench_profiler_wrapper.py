@@ -14,13 +14,13 @@ import runpy
 
 # Check if profiling should be enabled
 if os.getenv("ENABLE_TRITON_PROFILER", "0") == "1":
-    # Add the base directory to Python path
-    base_dir = os.path.dirname(os.path.abspath(__file__))
+    # Add the project root directory to Python path (parent of utils)
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if base_dir not in sys.path:
         sys.path.insert(0, base_dir)
 
     # Import and enable the profiler
-    from triton_profiler import enable_triton_kernel_timing
+    from utils.triton_profiler import enable_triton_kernel_timing
     enable_triton_kernel_timing()
 
 # Get the test script path from command line arguments
