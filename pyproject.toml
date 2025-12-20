@@ -110,6 +110,9 @@ conflicts = [
         {extra = "rocm"}
     ],
 ]
+override-dependencies = [
+    "pytorch-triton-rocm ; sys_platform == 'never'",
+]
 
 [tool.uv.sources]
 triton-viz = { path = "./submodules/triton-viz", editable=true}
