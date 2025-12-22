@@ -117,7 +117,7 @@ override-dependencies = [
 
 [tool.uv.sources]
 triton-viz = { path = "./submodules/triton-viz", editable = true }
-triton = { path = "./submodules/triton/python", editable = true, extra = "rocm" }
+triton = { path = "./submodules/triton", editable = true, extra = "rocm" }
 torch = [
     { index = "pytorch-cuda", extra = "cuda" },
     { index = "pytorch-rocm", extra = "rocm" },

@@ -27,7 +27,7 @@ uv venv .venv
 ./amd_docker_link_torch.sh
 
 # 3. Sync other dependencies (skip torch and triton)
-uv sync --no-install-package torch --no-install-package triton --extra rocm
+uv sync --no-install-package torch --extra rocm
 
 # 4. Activate the environment
 source .venv/bin/activate
