@@ -44,7 +44,7 @@ source .venv/bin/activate
 To verify the address sanitizer is correctly installed, run:
 
 ```bash
-python test_asan.py
+./run_asan_test.sh
 ```
 
 This test intentionally triggers an out-of-bounds access. If ASAN is working correctly, it will detect and report the memory violation.
