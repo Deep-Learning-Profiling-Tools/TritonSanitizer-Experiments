@@ -27,6 +27,7 @@ PROJECT_ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from utils.test_registry import REPO_CONFIGS, get_configs_by_group
+from utils.test_id_registry import get_test_id, get_max_test_id
 from utils.misc import EASTERN_TZ
 
 # Get baseline configurations from registry
@@ -173,7 +174,7 @@ class AddressSanitizerRunner:
         self.output_base_dir = self.script_dir / "results" / "address_sanitizer"
         self.output_base_dir.mkdir(parents=True, exist_ok=True)
         self.timestamp = datetime.now(EASTERN_TZ).strftime("%Y%m%d_%H%M%S")
-        self.global_test_counter = 0
+        self.max_test_id = get_max_test_id()
         self.total_tests = 0
         self.test_results = OrderedDict()
         self.test_list = []
@@ -323,8 +324,9 @@ class AddressSanitizerRunner:
         test_function = test_info["test_function"]
         config = REPO_CONFIGS[repo_name]
 
-        self.global_test_counter += 1
-        test_number = str(self.global_test_counter).zfill(len(str(self.total_tests)))
+        # Use global test ID from registry
+        global_id = get_test_id(test_info["test_name"])
+        test_number = str(global_id).zfill(len(str(self.max_test_id)))
 
         output_dir = self.output_base_dir / env_config["name"]
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -381,7 +383,7 @@ class AddressSanitizerRunner:
         else:
             test_display = test_file.name
 
-        print(f"  [{self.global_test_counter}/{self.total_tests}] [{repo_name}] Running: {test_display}")
+        print(f"  [ID:{global_id}/{self.max_test_id}] [{repo_name}] Running: {test_display}")
 
         start_time = time.time()
 
@@ -464,8 +466,6 @@ class AddressSanitizerRunner:
         for env_key, env_config in ENV_CONFIGS.items():
             print(f"\nConfiguration: [{env_key}] {env_config['description']}")
             print("-" * 50)
-
-            self.global_test_counter = 0
 
             for test_info in self.test_list:
                 result = self.run_single_test(test_info, env_key)
