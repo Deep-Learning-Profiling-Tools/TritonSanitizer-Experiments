@@ -2,7 +2,20 @@
 
 ## Setup
 
+### Install uv
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
 ### AMD Docker Environment
+
+Start the Docker container:
+
+```bash
+./start_docker_rocm_asan.sh
+docker exec -it rocm_asan bash
+```
 
 To set up the virtual environment using system torch/triton in AMD Docker:
 

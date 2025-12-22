@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Link system torch/triton to uv virtual environment
+# Link system torch to uv virtual environment
 # Usage: ./link_system_torch.sh [venv_path] [system_packages_path]
 
 VENV_PATH="${1:-.venv}"
@@ -24,7 +24,6 @@ cd "$TARGET_DIR" || exit 1
 PACKAGES=(
     "torch"
     "torchgen"
-    "triton"
     "torchaudio"
     "torchvision"
     "torchvision.libs"
@@ -39,7 +38,7 @@ for pkg in "${PACKAGES[@]}"; do
 done
 
 # Link dist-info directories
-for dist_info in "$SYSTEM_PACKAGES"/*torch*.dist-info "$SYSTEM_PACKAGES"/*triton*.dist-info; do
+for dist_info in "$SYSTEM_PACKAGES"/*torch*.dist-info; do
     if [ -e "$dist_info" ]; then
         ln -sf "$dist_info" .
         echo "Linked: $(basename "$dist_info")"
