@@ -9,7 +9,7 @@ docker run -d -t \
     --group-add video \
     --ipc=host \
     --shm-size 8G \
-    -v "$PWD":/workspace \
+    -v "$PWD/..":/workspace \
     -w /workspace \
     pmylonamd/rocm7.0_ubuntu22.04_py3.10_pytorch_2.8.0_asan \
     sleep infinity
