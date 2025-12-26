@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Default to test_asan.py if no argument provided
+PYTHON_FILE=${1:-test_asan.py}
+
 ulimit -s 1024
 
 export PATH=$(find ~/.triton/llvm -name llvm-symbolizer -printf '%h\n'):$PATH
@@ -42,4 +45,4 @@ export HSA_XNACK=1
 export AMDGCN_USE_BUFFER_OPS=0
 
 ASAN_OPTIONS=detect_leaks=0,alloc_dealloc_mismatch=0 \
-LD_PRELOAD=$CLANG_ASAN_LIB:$HIP_ASAN_LIB python test_asan.py
+LD_PRELOAD=$CLANG_ASAN_LIB:$HIP_ASAN_LIB python $PYTHON_FILE
