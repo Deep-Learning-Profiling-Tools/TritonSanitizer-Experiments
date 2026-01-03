@@ -12,6 +12,7 @@ import csv
 import sys
 import shutil
 import argparse
+import re
 from pathlib import Path
 from datetime import datetime
 from collections import OrderedDict
@@ -35,7 +36,7 @@ class KernelTimeTritonSanitizerRunner:
     def __init__(self):
         self.script_dir = Path(__file__).parent.absolute()
         self.project_root = self.script_dir.parent
-        self.output_base_dir = self.script_dir / "results" / "triton_sanitizer"
+        self.output_base_dir = self.script_dir / "results"
         self.output_base_dir.mkdir(parents=True, exist_ok=True)
         self.timestamp = datetime.now(EASTERN_TZ).strftime("%Y%m%d_%H%M%S")
         self.global_test_counter = 0
@@ -53,6 +54,30 @@ class KernelTimeTritonSanitizerRunner:
                 print("Aborted.")
                 return False
         return True
+
+    def extract_kernel_time_from_log(self, log_file):
+        """
+        Extract total kernel time from a log file.
+        Parses all "Triton-Viz: execution time for ...: X.XXX ms" lines and sums them.
+        Returns (total_time_ms, kernel_count) tuple.
+        """
+        pattern = re.compile(r'Triton-Viz: execution time for [^:]+: ([\d.]+) ms')
+
+        total_time = 0.0
+        count = 0
+
+        try:
+            with open(log_file, 'r', errors='ignore') as f:
+                for line in f:
+                    match = pattern.search(line)
+                    if match:
+                        total_time += float(match.group(1))
+                        count += 1
+        except Exception as e:
+            print(f"Warning: Could not extract kernel time from {log_file}: {e}")
+            return 0.0, 0
+
+        return total_time, count
 
     def load_whitelist(self, whitelist_file, repo_name):
         """Load test whitelist from file."""
@@ -281,15 +306,19 @@ class KernelTimeTritonSanitizerRunner:
             status = "ERROR"
             error_msg = str(e)
 
+        # Extract kernel time from log file
+        kernel_time_ms, kernel_count = self.extract_kernel_time_from_log(output_file)
+
         with open(output_file, "a") as log_file:
             log_file.write("\n" + "=" * 80 + "\n")
             log_file.write(f"End Time: {datetime.now(EASTERN_TZ).isoformat()}\n")
             log_file.write(f"Elapsed Time: {elapsed_time:.4f} seconds\n")
+            log_file.write(f"Kernel Time: {kernel_time_ms:.4f} ms ({kernel_count} kernels)\n")
             log_file.write(f"Status: {status}\n")
             if error_msg:
                 log_file.write(f"Error: {error_msg}\n")
 
-        print(f"    Status: {status} ({elapsed_time:.2f}s)")
+        print(f"    Status: {status} ({elapsed_time:.2f}s, kernel: {kernel_time_ms:.3f}ms/{kernel_count})")
         if error_msg:
             print(f"    Error: {error_msg}")
 
@@ -297,6 +326,8 @@ class KernelTimeTritonSanitizerRunner:
             "test_number": test_number,
             "status": status,
             "elapsed_time": elapsed_time,
+            "kernel_time_ms": kernel_time_ms,
+            "kernel_count": kernel_count,
             "error_message": error_msg,
             "output_file": str(output_file)
         }
@@ -333,19 +364,21 @@ class KernelTimeTritonSanitizerRunner:
                 if self.test_results[test_name]["test_number"] is None:
                     self.test_results[test_name]["test_number"] = result["test_number"]
 
-                if result["status"] == "PASSED":
-                    self.test_results[test_name][env_key] = result["elapsed_time"]
-                else:
-                    self.test_results[test_name][env_key] = result["status"]
+                # Store kernel time (in ms), kernel count, and status
+                self.test_results[test_name][f"{env_key}_kernel_time_ms"] = result["kernel_time_ms"]
+                self.test_results[test_name][f"{env_key}_kernel_count"] = result["kernel_count"]
+                self.test_results[test_name][f"{env_key}_status"] = result["status"]
 
     def save_results_csv(self):
         """Save test results to CSV file."""
-        csv_file = self.output_base_dir / f"results_{self.timestamp}.csv"
+        csv_file = self.output_base_dir / "results_triton_sanitizer.csv"
 
         with open(csv_file, "w", newline="") as f:
             header = ["Test_Number", "Test_Name"]
             for env_key in ENV_CONFIGS.keys():
-                header.append(env_key)
+                header.append(f"{env_key}_kernel_time_ms")
+                header.append(f"{env_key}_kernel_count")
+                header.append(f"{env_key}_status")
 
             writer = csv.writer(f)
             writer.writerow(header)
@@ -354,11 +387,13 @@ class KernelTimeTritonSanitizerRunner:
                 row = [data.get("test_number", ""), test_name]
 
                 for env_key in ENV_CONFIGS.keys():
-                    value = data.get(env_key, "N/A")
-                    if isinstance(value, float):
-                        row.append(f"{value:.4f}")
-                    else:
-                        row.append(value)
+                    kernel_time = data.get(f"{env_key}_kernel_time_ms", 0.0)
+                    kernel_count = data.get(f"{env_key}_kernel_count", 0)
+                    status = data.get(f"{env_key}_status", "N/A")
+
+                    row.append(f"{kernel_time:.4f}")
+                    row.append(kernel_count)
+                    row.append(status)
 
                 writer.writerow(row)
 
@@ -376,18 +411,23 @@ class KernelTimeTritonSanitizerRunner:
             failed = 0
             timeout = 0
             error = 0
-            total_time = 0
+            total_kernel_time_ms = 0.0
+            total_kernel_count = 0
 
             for test_name, data in self.test_results.items():
-                value = data.get(env_key, "N/A")
-                if isinstance(value, float):
+                status = data.get(f"{env_key}_status", "N/A")
+                kernel_time = data.get(f"{env_key}_kernel_time_ms", 0.0)
+                kernel_count = data.get(f"{env_key}_kernel_count", 0)
+
+                if status == "PASSED":
                     passed += 1
-                    total_time += value
-                elif value == "FAILED":
+                    total_kernel_time_ms += kernel_time
+                    total_kernel_count += kernel_count
+                elif status == "FAILED":
                     failed += 1
-                elif value == "TIMEOUT":
+                elif status == "TIMEOUT":
                     timeout += 1
-                elif value == "ERROR":
+                elif status == "ERROR":
                     error += 1
 
             total = passed + failed + timeout + error
@@ -401,7 +441,8 @@ class KernelTimeTritonSanitizerRunner:
                     print(f"  Timeout: {timeout}")
                 if error > 0:
                     print(f"  Error: {error}")
-                print(f"  Total Time: {total_time:.2f}s")
+                print(f"  Total Kernel Time: {total_kernel_time_ms:.3f} ms")
+                print(f"  Total Kernels: {total_kernel_count}")
 
 
 def main():
