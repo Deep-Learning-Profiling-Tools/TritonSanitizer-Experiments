@@ -2,7 +2,7 @@
 name = "env-freeze"
 version = "0.0.0"
 description = "Recreated environment pinned from site-packages"
-requires-python = ">=3.10,<3.11"
+requires-python = "==3.12.3"
 
 dependencies = [
   "aiofiles==24.1.0",
@@ -83,7 +83,7 @@ dependencies = [
   "uvicorn==0.34.2",
   "virtualenv==20.30.0",
   "websockets==15.0.1",
-  "z3-solver==4.14.1.0",
+  "z3-solver==4.15.3.0",
   "zipp==3.21.0",
 ]
 
