@@ -40,6 +40,20 @@ def _resolve_stream(stream_handle):
         return torch.cuda.current_stream()
 
 
+def _delay_launch_on_stream(stream):
+    """Add a small delay on the stream to ensure accurate GPU timing measurement."""
+    if not _torch_cuda_ready():
+        return
+    if stream is None:
+        torch.cuda._sleep(1_000_000)
+        return
+    try:
+        with torch.cuda.stream(stream):
+            torch.cuda._sleep(1_000_000)
+    except RuntimeError:
+        torch.cuda._sleep(1_000_000)
+
+
 def _liger_launch_enter_hook(metadata):
     """Hook function called before kernel launch."""
     if metadata is None or not _torch_cuda_ready():
@@ -53,6 +67,7 @@ def _liger_launch_enter_hook(metadata):
     end_event = torch.cuda.Event(enable_timing=True)
     cpu_start = time.perf_counter_ns()
     start_event.record(stream)
+    _delay_launch_on_stream(stream)
     data[_LAUNCH_TIMING_STATE_KEY] = {
         "stream": stream,
         "start_event": start_event,
