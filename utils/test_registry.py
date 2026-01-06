@@ -91,43 +91,47 @@ ENV_CONFIGS = OrderedDict([
         "command_prefix": "compute-sanitizer"
     }),
     # Triton-sanitizer configurations
-    ("triton_sanitizer_compile_no_cache", {
+    ("compile_on_memory_on", {
         "group": "triton_sanitizer",
-        "name": "compile_no_cache",
-        "description": "Triton-sanitizer with always compile, disable CUDA caching",
-        "env": {
-            "TRITON_ALWAYS_COMPILE": "1",
-            "PYTORCH_NO_CUDA_MEMORY_CACHING": "1"
-        },
-        "command_prefix": "/usr/bin/time -v triton-sanitizer"
-    }),
-    ("triton_sanitizer_no_compile_with_cache", {
-        "group": "triton_sanitizer",
-        "name": "no_compile_with_cache",
-        "description": "Triton-sanitizer with cached kernels, enable CUDA caching",
-        "env": {
-            "TRITON_ALWAYS_COMPILE": "0",
-            "PYTORCH_NO_CUDA_MEMORY_CACHING": "0"
-        },
-        "command_prefix": "/usr/bin/time -v triton-sanitizer"
-    }),
-    ("triton_sanitizer_compile_with_cache", {
-        "group": "triton_sanitizer",
-        "name": "compile_with_cache",
+        "name": "compile_on_memory_on",
         "description": "Triton-sanitizer with always compile, enable CUDA caching",
         "env": {
             "TRITON_ALWAYS_COMPILE": "1",
-            "PYTORCH_NO_CUDA_MEMORY_CACHING": "0"
+            "PYTORCH_NO_CUDA_MEMORY_CACHING": "0",
+            "SANITIZER_ENABLE_FAKE_TENSOR": "1"
         },
         "command_prefix": "/usr/bin/time -v triton-sanitizer"
     }),
-    ("triton_sanitizer_no_compile_no_cache", {
+    ("compile_on_memory_off", {
         "group": "triton_sanitizer",
-        "name": "no_compile_no_cache",
+        "name": "compile_on_memory_off",
+        "description": "Triton-sanitizer with always compile, disable CUDA caching",
+        "env": {
+            "TRITON_ALWAYS_COMPILE": "1",
+            "PYTORCH_NO_CUDA_MEMORY_CACHING": "1",
+            "SANITIZER_ENABLE_FAKE_TENSOR": "1"
+        },
+        "command_prefix": "/usr/bin/time -v triton-sanitizer"
+    }),
+    ("compile_off_memory_on", {
+        "group": "triton_sanitizer",
+        "name": "compile_off_memory_on",
+        "description": "Triton-sanitizer with cached kernels, enable CUDA caching",
+        "env": {
+            "TRITON_ALWAYS_COMPILE": "0",
+            "PYTORCH_NO_CUDA_MEMORY_CACHING": "0",
+            "SANITIZER_ENABLE_FAKE_TENSOR": "1"
+        },
+        "command_prefix": "/usr/bin/time -v triton-sanitizer"
+    }),
+    ("compile_off_memory_off", {
+        "group": "triton_sanitizer",
+        "name": "compile_off_memory_off",
         "description": "Triton-sanitizer with cached kernels, disable CUDA caching",
         "env": {
             "TRITON_ALWAYS_COMPILE": "0",
-            "PYTORCH_NO_CUDA_MEMORY_CACHING": "1"
+            "PYTORCH_NO_CUDA_MEMORY_CACHING": "1",
+            "SANITIZER_ENABLE_FAKE_TENSOR": "1"
         },
         "command_prefix": "/usr/bin/time -v triton-sanitizer"
     }),
@@ -244,6 +248,7 @@ ENV_CONFIGS = OrderedDict([
             "SANITIZER_ENABLE_LOOP_CACHE": "0",
             "SANITIZER_ENABLE_GRID_CACHE": "0",
             "SANITIZER_ENABLE_KERNEL_CACHE": "0",
+            "SANITIZER_ENABLE_FAKE_TENSOR": "1",
             "ENABLE_TIMING": "1"
         },
         "command_prefix": "triton-sanitizer"
@@ -257,6 +262,7 @@ ENV_CONFIGS = OrderedDict([
             "SANITIZER_ENABLE_LOOP_CACHE": "0",
             "SANITIZER_ENABLE_GRID_CACHE": "0",
             "SANITIZER_ENABLE_KERNEL_CACHE": "0",
+            "SANITIZER_ENABLE_FAKE_TENSOR": "1",
             "ENABLE_TIMING": "1"
         },
         "command_prefix": "triton-sanitizer"
@@ -270,6 +276,7 @@ ENV_CONFIGS = OrderedDict([
             "SANITIZER_ENABLE_LOOP_CACHE": "1",
             "SANITIZER_ENABLE_GRID_CACHE": "0",
             "SANITIZER_ENABLE_KERNEL_CACHE": "0",
+            "SANITIZER_ENABLE_FAKE_TENSOR": "1",
             "ENABLE_TIMING": "1"
         },
         "command_prefix": "triton-sanitizer"
@@ -283,6 +290,7 @@ ENV_CONFIGS = OrderedDict([
             "SANITIZER_ENABLE_LOOP_CACHE": "1",
             "SANITIZER_ENABLE_GRID_CACHE": "1",
             "SANITIZER_ENABLE_KERNEL_CACHE": "0",
+            "SANITIZER_ENABLE_FAKE_TENSOR": "1",
             "ENABLE_TIMING": "1"
         },
         "command_prefix": "triton-sanitizer"
@@ -296,6 +304,7 @@ ENV_CONFIGS = OrderedDict([
             "SANITIZER_ENABLE_LOOP_CACHE": "1",
             "SANITIZER_ENABLE_GRID_CACHE": "1",
             "SANITIZER_ENABLE_KERNEL_CACHE": "1",
+            "SANITIZER_ENABLE_FAKE_TENSOR": "1",
             "ENABLE_TIMING": "1"
         },
         "command_prefix": "triton-sanitizer"
