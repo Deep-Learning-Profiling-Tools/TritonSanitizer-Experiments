@@ -239,34 +239,28 @@ class BaselineAMDRunner:
         print(f"  [{self.global_test_counter}/{self.total_tests}] [{repo_name}] Running: {test_display}")
 
         start_time = time.time()
+        output = ""
 
         try:
-            with open(output_file, "w") as log_file:
-                log_file.write(f"Test Number: {test_number}\n")
-                log_file.write(f"Test: {test_info['test_name']}\n")
-                log_file.write(f"Environment: {env_config_key}\n")
-                log_file.write(f"Command: {' '.join(cmd)}\n")
-                log_file.write(f"Start Time: {datetime.now(EASTERN_TZ).isoformat()}\n")
-                log_file.write("=" * 80 + "\n")
-                log_file.flush()
-
-                result = subprocess.run(
-                    cmd,
-                    env=env,
-                    cwd=test_dir,
-                    stdout=log_file,
-                    stderr=subprocess.STDOUT,
-                    timeout=300,
-                    text=True
-                )
+            result = subprocess.run(
+                cmd,
+                env=env,
+                cwd=test_dir,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=300,
+                text=True
+            )
+            output = result.stdout
 
             elapsed_time = time.time() - start_time
             success = result.returncode == 0
             status = "PASSED" if success else "FAILED"
             error_msg = "" if success else f"Return code: {result.returncode}"
 
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as e:
             elapsed_time = time.time() - start_time
+            output = e.stdout if e.stdout else ""
             status = "TIMEOUT"
             error_msg = "Test exceeded 5 minute timeout"
 
@@ -275,7 +269,15 @@ class BaselineAMDRunner:
             status = "ERROR"
             error_msg = str(e)
 
-        with open(output_file, "a") as log_file:
+        # Write output to log file
+        with open(output_file, "w") as log_file:
+            log_file.write(f"Test Number: {test_number}\n")
+            log_file.write(f"Test: {test_info['test_name']}\n")
+            log_file.write(f"Environment: {env_config_key}\n")
+            log_file.write(f"Command: {' '.join(cmd)}\n")
+            log_file.write(f"Start Time: {datetime.now(EASTERN_TZ).isoformat()}\n")
+            log_file.write("=" * 80 + "\n")
+            log_file.write(output)
             log_file.write("\n" + "=" * 80 + "\n")
             log_file.write(f"End Time: {datetime.now(EASTERN_TZ).isoformat()}\n")
             log_file.write(f"Elapsed Time: {elapsed_time:.4f} seconds\n")
@@ -334,7 +336,7 @@ class BaselineAMDRunner:
 
     def save_results_csv(self):
         """Save test results to CSV file."""
-        csv_file = self.output_base_dir / f"results_{self.timestamp}.csv"
+        csv_file = self.script_dir / "results" / "results_baseline_amd.csv"
 
         with open(csv_file, "w", newline="") as f:
             header = ["Test_Number", "Test_Name"]
