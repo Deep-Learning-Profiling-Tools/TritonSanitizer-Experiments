@@ -20,23 +20,20 @@ Start the Docker container:
 
 ```bash
 ./start_docker_rocm_asan.sh
-docker exec -it rocm_asan bash
+docker attach rocm_asan
 ```
 
-To set up the virtual environment using system torch/triton in AMD Docker:
+Install dependencies (triton, triton-viz, and project):
 
 ```bash
-# 1. Create virtual environment
-uv venv .venv
+cd setup_amd
+./install_envs.sh
+```
 
-# 2. Link system torch/triton (no activation needed)
-./amd_docker_link_torch.sh
+Activate the environment:
 
-# 3. Sync other dependencies (skip torch and triton)
-uv sync --no-install-package torch --extra rocm
-
-# 4. Activate the environment
-source .venv/bin/activate
+```bash
+source /opt/venv/bin/activate
 ```
 
 ### Test Address Sanitizer
