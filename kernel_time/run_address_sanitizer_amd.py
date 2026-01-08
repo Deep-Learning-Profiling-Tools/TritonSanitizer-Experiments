@@ -1,0 +1,653 @@
+#!/usr/bin/env python3
+"""
+Run address sanitizer kernel time experiments for all repositories on AMD GPUs.
+Results are saved to kernel_time/results/address_sanitizer/
+
+This script combines ASAN (Address Sanitizer) with triton profiler to measure
+kernel execution times while detecting memory errors.
+"""
+
+import os
+import subprocess
+import time
+import ast
+import csv
+import sys
+import argparse
+import resource
+import atexit
+import shutil
+import re
+from pathlib import Path
+from datetime import datetime
+from collections import OrderedDict
+
+# Add project root to path for imports
+SCRIPT_DIR = Path(__file__).parent.absolute()
+PROJECT_ROOT = SCRIPT_DIR.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from utils.test_registry import REPO_CONFIGS, get_configs_by_group
+from utils.misc import EASTERN_TZ
+
+# Get kernel_time baseline configuration from registry
+ENV_CONFIGS = OrderedDict([
+    (key, config) for key, config in get_configs_by_group("kernel_time").items()
+    if "baseline" in config["name"]
+])
+
+# Global variable for cleanup
+_TORCH_PATH = None
+_LIBAMDHIP_MOVED = False
+
+
+def _find_path(base_dir, pattern, use_printf_h=True):
+    """Find a file/directory using find command."""
+    if use_printf_h:
+        cmd = ["find", base_dir, "-name", pattern, "-printf", "%h\\n"]
+    else:
+        cmd = ["find", base_dir, "-wholename", pattern]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        paths = result.stdout.strip().split('\n')
+        return paths[0] if paths and paths[0] else None
+    except Exception:
+        return None
+
+
+def _find_wholename(base_dir, pattern, use_printf_h=True):
+    """Find a file/directory using find command with -wholename."""
+    if use_printf_h:
+        cmd = ["find", base_dir, "-wholename", pattern, "-printf", "%h\\n"]
+    else:
+        cmd = ["find", base_dir, "-wholename", pattern]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        paths = result.stdout.strip().split('\n')
+        return paths[0] if paths and paths[0] else None
+    except Exception:
+        return None
+
+
+def _find_type_d_wholename(base_dir, pattern):
+    """Find a directory using find command with -type d -wholename."""
+    cmd = ["find", base_dir, "-type", "d", "-wholename", pattern]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        paths = result.stdout.strip().split('\n')
+        return paths[0] if paths and paths[0] else None
+    except Exception:
+        return None
+
+
+def _cleanup_asan():
+    """Restore libamdhip64.so on exit."""
+    global _TORCH_PATH, _LIBAMDHIP_MOVED
+    if _LIBAMDHIP_MOVED and _TORCH_PATH:
+        bck_path = os.path.join(_TORCH_PATH, "libamdhip64_bck.so")
+        orig_path = os.path.join(_TORCH_PATH, "libamdhip64.so")
+        if os.path.exists(bck_path):
+            shutil.move(bck_path, orig_path)
+            print(f"Restored {orig_path}")
+
+
+def setup_asan_environment():
+    """Set up ASAN environment variables and library paths."""
+    global _TORCH_PATH, _LIBAMDHIP_MOVED
+
+    # Set stack size limit (ulimit -s 1024)
+    resource.setrlimit(resource.RLIMIT_STACK, (1024 * 1024, resource.RLIM_INFINITY))
+
+    # Add llvm-symbolizer to PATH
+    home = os.path.expanduser("~")
+    symbolizer_dir = _find_path(os.path.join(home, ".triton/llvm"), "llvm-symbolizer")
+    if symbolizer_dir:
+        os.environ["PATH"] = f"{symbolizer_dir}:{os.environ.get('PATH', '')}"
+
+    # Find TORCH_PATH and set LD_LIBRARY_PATH
+    _TORCH_PATH = _find_path("/opt", "libcaffe2_nvrtc.so")
+    if _TORCH_PATH:
+        ld_library_path = os.environ.get("LD_LIBRARY_PATH", "")
+        os.environ["LD_LIBRARY_PATH"] = f"{ld_library_path}:{_TORCH_PATH}" if ld_library_path else _TORCH_PATH
+
+    # Register cleanup before moving the file
+    atexit.register(_cleanup_asan)
+
+    # Move libamdhip64.so to libamdhip64_bck.so
+    if _TORCH_PATH:
+        orig_path = os.path.join(_TORCH_PATH, "libamdhip64.so")
+        bck_path = os.path.join(_TORCH_PATH, "libamdhip64_bck.so")
+        if os.path.exists(orig_path):
+            shutil.move(orig_path, bck_path)
+            _LIBAMDHIP_MOVED = True
+            print(f"Moved {orig_path} to {bck_path}")
+
+    # Add ASAN library paths to LD_LIBRARY_PATH
+    clang_asan_dir = _find_path("/opt", "libclang_rt.asan-x86_64.so")
+    if clang_asan_dir:
+        os.environ["LD_LIBRARY_PATH"] = f"{clang_asan_dir}:{os.environ.get('LD_LIBRARY_PATH', '')}"
+
+    llvm_asan_dir = _find_type_d_wholename("/opt", "*lib/llvm/lib/asan")
+    if llvm_asan_dir:
+        os.environ["LD_LIBRARY_PATH"] = f"{llvm_asan_dir}:{os.environ.get('LD_LIBRARY_PATH', '')}"
+
+    hip_asan_dir = _find_wholename("/opt", "*lib/asan/libamdhip64.so")
+    if hip_asan_dir:
+        os.environ["LD_LIBRARY_PATH"] = f"{hip_asan_dir}:{os.environ.get('LD_LIBRARY_PATH', '')}"
+
+    # Find ASAN libraries for LD_PRELOAD
+    clang_asan_lib_result = subprocess.run(
+        ["find", "/opt", "-name", "libclang_rt.asan-x86_64.so"],
+        capture_output=True, text=True, timeout=30
+    )
+    clang_asan_lib = clang_asan_lib_result.stdout.strip().split('\n')[0] if clang_asan_lib_result.stdout.strip() else None
+
+    hip_asan_lib_result = subprocess.run(
+        ["find", "/opt", "-wholename", "*lib/asan/libamdhip64.so"],
+        capture_output=True, text=True, timeout=30
+    )
+    hip_asan_lib = hip_asan_lib_result.stdout.strip().split('\n')[0] if hip_asan_lib_result.stdout.strip() else None
+
+    os.environ["CLANG_ASAN_LIB"] = clang_asan_lib or ""
+    os.environ["HIP_ASAN_LIB"] = hip_asan_lib or ""
+
+    # Build LD_PRELOAD value
+    ld_preload_parts = []
+    if clang_asan_lib:
+        ld_preload_parts.append(clang_asan_lib)
+    if hip_asan_lib:
+        ld_preload_parts.append(hip_asan_lib)
+    os.environ["ASAN_LD_PRELOAD"] = ":".join(ld_preload_parts)
+
+    # Set ASAN_OPTIONS
+    os.environ["ASAN_OPTIONS"] = "detect_leaks=0,alloc_dealloc_mismatch=0"
+
+    print("ASAN environment setup complete")
+    print(f"  LD_LIBRARY_PATH: {os.environ.get('LD_LIBRARY_PATH', '')[:100]}...")
+    print(f"  ASAN_LD_PRELOAD: {os.environ.get('ASAN_LD_PRELOAD', '')}")
+
+
+class KernelTimeAddressSanitizerAMDRunner:
+    def __init__(self):
+        self.script_dir = Path(__file__).parent.absolute()
+        self.project_root = self.script_dir.parent
+        self.output_base_dir = self.script_dir / "results" / "address_sanitizer"
+        self.output_base_dir.mkdir(parents=True, exist_ok=True)
+        self.timestamp = datetime.now(EASTERN_TZ).strftime("%Y%m%d_%H%M%S")
+        self.global_test_counter = 0
+        self.total_tests = 0
+        self.test_results = OrderedDict()
+        self.test_list = []
+
+    def extract_kernel_time_from_log(self, log_file):
+        """
+        Extract total kernel time from a log file.
+        Parses all "[triton-profiler] kernel=... gpu_time_ms=X.XXX" lines and sums them.
+        Returns (total_time_ms, kernel_count) tuple.
+        """
+        pattern = re.compile(r'\[triton-profiler\] kernel=[^\s]+ cpu_launch_ms=[\d.]+ gpu_time_ms=([\d.]+)')
+
+        total_time = 0.0
+        count = 0
+
+        try:
+            with open(log_file, 'r', errors='ignore') as f:
+                for line in f:
+                    match = pattern.search(line)
+                    if match:
+                        total_time += float(match.group(1))
+                        count += 1
+        except Exception as e:
+            print(f"Warning: Could not extract kernel time from {log_file}: {e}")
+            return 0.0, 0
+
+        return total_time, count
+
+    def load_whitelist(self, whitelist_file, repo_name):
+        """Load test whitelist from file."""
+        whitelist = {}
+        whitelist_path = self.project_root / whitelist_file
+
+        if not whitelist_path.exists():
+            return None
+
+        with open(whitelist_path, "r") as f:
+            lines = f.readlines()
+
+        for line in lines:
+            line = line.strip()
+            if line and not line.startswith("#"):
+                if repo_name == "tritonbench":
+                    file_name = Path(line).stem
+                    whitelist[file_name] = []
+                elif "::" in line:
+                    test_file, test_function = line.split("::")
+                    test_file = Path(test_file).stem
+                    if test_file not in whitelist:
+                        whitelist[test_file] = []
+                    whitelist[test_file].append(test_function)
+
+        return whitelist if whitelist else None
+
+    def discover_test_functions(self, test_file):
+        """Discover individual test functions in a pytest file."""
+        test_functions = []
+
+        try:
+            with open(test_file, 'r') as f:
+                tree = ast.parse(f.read())
+
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef) and node.name.startswith('test_'):
+                    test_functions.append(node.name)
+        except Exception as e:
+            print(f"Warning: Could not parse {test_file} to find test functions: {e}")
+            return None
+
+        return test_functions if test_functions else None
+
+    def discover_tests(self, repo_name):
+        """Discover test files in a repository."""
+        config = REPO_CONFIGS[repo_name]
+        test_dir = self.project_root / config["test_dir"]
+
+        if not test_dir.exists():
+            print(f"Warning: Test directory {test_dir} does not exist for {repo_name}")
+            return []
+
+        test_files = []
+
+        if repo_name == "tritonbench":
+            benchmark_dirs = [
+                test_dir / "data" / "TritonBench_G_v1",
+                test_dir / "LLM_generated",
+                test_dir / "EVAL"
+            ]
+
+            for bench_dir in benchmark_dirs:
+                if bench_dir.exists():
+                    for py_file in bench_dir.glob("**/*.py"):
+                        if "__pycache__" not in str(py_file) and not py_file.name.startswith("__"):
+                            test_files.append(py_file)
+        else:
+            pattern = config["test_pattern"]
+            test_files = list(test_dir.glob(pattern))
+
+        test_files = [f for f in test_files if f.name not in config.get("skip_tests", [])]
+
+        return test_files
+
+    def prepare_test_list(self, repositories, whitelists=None):
+        """Prepare a complete list of all tests to run."""
+        self.test_list = []
+
+        for repo in repositories:
+            test_files = self.discover_tests(repo)
+            whitelist = whitelists.get(repo) if whitelists else None
+
+            if whitelist:
+                print(f"Using whitelist for {repo}: {len(whitelist)} files with specific tests")
+
+            for test_file in test_files:
+                test_file_stem = test_file.stem
+
+                if whitelist and test_file_stem in whitelist:
+                    if repo == "tritonbench":
+                        self.test_list.append({
+                            "repository": repo,
+                            "test_file": test_file,
+                            "test_function": None,
+                            "test_name": f"{repo}/{test_file_stem}"
+                        })
+                    else:
+                        for test_function in whitelist[test_file_stem]:
+                            self.test_list.append({
+                                "repository": repo,
+                                "test_file": test_file,
+                                "test_function": test_function,
+                                "test_name": f"{repo}/{test_file_stem}/{test_function}"
+                            })
+                elif whitelist and repo == "tritonbench":
+                    continue
+                elif not whitelist and repo in ["liger_kernel", "flag_gems"]:
+                    test_functions = self.discover_test_functions(test_file)
+
+                    if test_functions:
+                        for test_function in test_functions:
+                            self.test_list.append({
+                                "repository": repo,
+                                "test_file": test_file,
+                                "test_function": test_function,
+                                "test_name": f"{repo}/{test_file_stem}/{test_function}"
+                            })
+                    else:
+                        self.test_list.append({
+                            "repository": repo,
+                            "test_file": test_file,
+                            "test_function": None,
+                            "test_name": f"{repo}/{test_file_stem}"
+                        })
+                elif not whitelist:
+                    self.test_list.append({
+                        "repository": repo,
+                        "test_file": test_file,
+                        "test_function": None,
+                        "test_name": f"{repo}/{test_file_stem}"
+                    })
+
+        self.total_tests = len(self.test_list)
+        print(f"Discovered {self.total_tests} tests across {len(repositories)} repositories")
+        return self.test_list
+
+    def run_single_test(self, test_info, env_config_key):
+        """Run a single test with specific environment configuration."""
+        env_config = ENV_CONFIGS[env_config_key]
+        repo_name = test_info["repository"]
+        test_file = test_info["test_file"]
+        test_function = test_info["test_function"]
+        config = REPO_CONFIGS[repo_name]
+
+        self.global_test_counter += 1
+        test_number = str(self.global_test_counter).zfill(len(str(self.total_tests)))
+
+        output_dir = self.output_base_dir / env_config["name"]
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        if test_function:
+            output_filename = f"{test_number}_{repo_name}_{test_file.stem}_{test_function}.log"
+        else:
+            output_filename = f"{test_number}_{repo_name}_{test_file.stem}.log"
+
+        output_file = output_dir / output_filename
+
+        env = os.environ.copy()
+        env.update(env_config["env"])
+
+        # Enable Address Sanitizer
+        env["TRITON_ENABLE_ASAN"] = "1"
+        env["HSA_XNACK"] = "1"
+
+        # Convert CUDA to HIP memory caching env vars for AMD
+        if env.get("PYTORCH_NO_CUDA_MEMORY_CACHING") == "1":
+            env["PYTORCH_NO_HIP_MEMORY_CACHING"] = "1"
+            env["HSA_DISABLE_FRAGMENT_ALLOCATOR"] = "1"
+            env["AMD_PYTORCH_NO_CUDA_MEMORY_CACHING"] = "1"
+            env["AMDGCN_USE_BUFFER_OPS"] = "0"
+        env.pop("PYTORCH_NO_CUDA_MEMORY_CACHING", None)
+
+        # Set LD_PRELOAD for ASAN libraries
+        if os.environ.get("ASAN_LD_PRELOAD"):
+            env["LD_PRELOAD"] = os.environ["ASAN_LD_PRELOAD"]
+
+        # Add project root to PYTHONPATH
+        if "PYTHONPATH" in env:
+            env["PYTHONPATH"] = f"{self.project_root}:{env['PYTHONPATH']}"
+        else:
+            env["PYTHONPATH"] = str(self.project_root)
+
+        test_dir = self.project_root / config["test_dir"]
+
+        if repo_name == "tritonbench" and config.get("special_handling"):
+            relative_path = test_file.relative_to(self.project_root / config["test_dir"])
+            # Check if profiler should be enabled
+            if env.get("ENABLE_TRITON_PROFILER") == "1":
+                wrapper_script = self.project_root / "utils" / "tritonbench_profiler_wrapper.py"
+                cmd = ["python", str(wrapper_script), str(relative_path)]
+            else:
+                cmd = ["python", str(relative_path)]
+        else:
+            if test_function:
+                cmd = ["pytest", "-s", "--assert=plain", f"{test_file.name}::{test_function}"]
+            else:
+                cmd = config["test_command"].split() + [test_file.name]
+
+            # Add pytest plugin for Triton profiling if enabled
+            if env.get("ENABLE_TRITON_PROFILER") == "1" and "pytest" in cmd[0]:
+                cmd.insert(1, "-p")
+                cmd.insert(2, "utils.pytest_triton_profiler")
+
+        command_prefix = env_config.get("command_prefix", "")
+        if command_prefix:
+            cmd = command_prefix.split() + cmd
+
+        if test_function:
+            test_display = f"{test_file.name}::{test_function}"
+        else:
+            test_display = test_file.name
+
+        print(f"  [{self.global_test_counter}/{self.total_tests}] [{repo_name}] Running: {test_display}")
+
+        start_time = time.time()
+
+        try:
+            with open(output_file, "w") as log_file:
+                log_file.write(f"Test Number: {test_number}\n")
+                log_file.write(f"Test: {test_info['test_name']}\n")
+                log_file.write(f"Environment: {env_config_key}\n")
+                log_file.write(f"TRITON_ENABLE_ASAN: 1\n")
+                log_file.write(f"HSA_XNACK: 1\n")
+                log_file.write(f"Command: {' '.join(cmd)}\n")
+                log_file.write(f"Start Time: {datetime.now(EASTERN_TZ).isoformat()}\n")
+                log_file.write("=" * 80 + "\n")
+                log_file.flush()
+
+                result = subprocess.run(
+                    cmd,
+                    env=env,
+                    cwd=test_dir,
+                    stdout=log_file,
+                    stderr=subprocess.STDOUT,
+                    timeout=600,
+                    text=True
+                )
+
+            elapsed_time = time.time() - start_time
+            success = result.returncode == 0
+            status = "PASSED" if success else "FAILED"
+            error_msg = "" if success else f"Return code: {result.returncode}"
+
+        except subprocess.TimeoutExpired:
+            elapsed_time = time.time() - start_time
+            status = "TIMEOUT"
+            error_msg = "Test exceeded 10 minute timeout"
+
+        except Exception as e:
+            elapsed_time = time.time() - start_time
+            status = "ERROR"
+            error_msg = str(e)
+
+        # Extract kernel time from log file
+        kernel_time_ms, kernel_count = self.extract_kernel_time_from_log(output_file)
+
+        with open(output_file, "a") as log_file:
+            log_file.write("\n" + "=" * 80 + "\n")
+            log_file.write(f"End Time: {datetime.now(EASTERN_TZ).isoformat()}\n")
+            log_file.write(f"Elapsed Time: {elapsed_time:.4f} seconds\n")
+            log_file.write(f"Kernel Time: {kernel_time_ms:.4f} ms ({kernel_count} kernels)\n")
+            log_file.write(f"Status: {status}\n")
+            if error_msg:
+                log_file.write(f"Error: {error_msg}\n")
+
+        print(f"    Status: {status} ({elapsed_time:.2f}s, kernel: {kernel_time_ms:.3f}ms/{kernel_count})")
+        if error_msg:
+            print(f"    Error: {error_msg}")
+
+        return {
+            "test_number": test_number,
+            "status": status,
+            "elapsed_time": elapsed_time,
+            "kernel_time_ms": kernel_time_ms,
+            "kernel_count": kernel_count,
+            "error_message": error_msg,
+            "output_file": str(output_file)
+        }
+
+    def run_all_tests(self, repositories, whitelists=None):
+        """Run all tests with address sanitizer kernel time configurations."""
+        self.prepare_test_list(repositories, whitelists)
+
+        if not self.test_list:
+            print("No tests found to run")
+            return
+
+        for test_info in self.test_list:
+            self.test_results[test_info["test_name"]] = {
+                "test_number": None,
+                "repository": test_info["repository"],
+                "test_file": str(test_info["test_file"]),
+                "test_function": test_info["test_function"] or ""
+            }
+
+        print(f"\nRunning tests with {len(ENV_CONFIGS)} kernel time configurations (TRITON_ENABLE_ASAN=1)")
+        print("=" * 60)
+
+        for env_key, env_config in ENV_CONFIGS.items():
+            print(f"\nConfiguration: [{env_key}] {env_config['description']}")
+            print("-" * 50)
+
+            self.global_test_counter = 0
+
+            for test_info in self.test_list:
+                result = self.run_single_test(test_info, env_key)
+
+                test_name = test_info["test_name"]
+                if self.test_results[test_name]["test_number"] is None:
+                    self.test_results[test_name]["test_number"] = result["test_number"]
+
+                # Store kernel time (in ms), kernel count, and status
+                self.test_results[test_name][f"{env_key}_kernel_time_ms"] = result["kernel_time_ms"]
+                self.test_results[test_name][f"{env_key}_kernel_count"] = result["kernel_count"]
+                self.test_results[test_name][f"{env_key}_status"] = result["status"]
+
+    def save_results_csv(self):
+        """Save test results to CSV file."""
+        csv_file = self.output_base_dir / "results_address_sanitizer_amd.csv"
+
+        with open(csv_file, "w", newline="") as f:
+            header = ["Test_Number", "Test_Name"]
+            for env_key in ENV_CONFIGS.keys():
+                header.append(f"{env_key}_kernel_time_ms")
+                header.append(f"{env_key}_kernel_count")
+                header.append(f"{env_key}_status")
+
+            writer = csv.writer(f)
+            writer.writerow(header)
+
+            for test_name, data in self.test_results.items():
+                row = [data.get("test_number", ""), test_name]
+
+                for env_key in ENV_CONFIGS.keys():
+                    kernel_time = data.get(f"{env_key}_kernel_time_ms", 0.0)
+                    kernel_count = data.get(f"{env_key}_kernel_count", 0)
+                    status = data.get(f"{env_key}_status", "N/A")
+
+                    row.append(f"{kernel_time:.4f}")
+                    row.append(kernel_count)
+                    row.append(status)
+
+                writer.writerow(row)
+
+        print(f"\nResults saved to: {csv_file}")
+        return csv_file
+
+    def print_summary(self):
+        """Print a summary of test results."""
+        print("\n" + "=" * 60)
+        print("KERNEL TIME ADDRESS SANITIZER AMD TEST SUMMARY")
+        print("=" * 60)
+
+        for env_key in ENV_CONFIGS.keys():
+            passed = 0
+            failed = 0
+            timeout = 0
+            error = 0
+            total_kernel_time_ms = 0.0
+            total_kernel_count = 0
+
+            for test_name, data in self.test_results.items():
+                status = data.get(f"{env_key}_status", "N/A")
+                kernel_time = data.get(f"{env_key}_kernel_time_ms", 0.0)
+                kernel_count = data.get(f"{env_key}_kernel_count", 0)
+
+                if status == "PASSED":
+                    passed += 1
+                    total_kernel_time_ms += kernel_time
+                    total_kernel_count += kernel_count
+                elif status == "FAILED":
+                    failed += 1
+                elif status == "TIMEOUT":
+                    timeout += 1
+                elif status == "ERROR":
+                    error += 1
+
+            total = passed + failed + timeout + error
+            if total > 0:
+                print(f"\n{env_key}:")
+                print(f"  Total: {total}")
+                print(f"  Passed: {passed} ({passed*100/total:.1f}%)")
+                if failed > 0:
+                    print(f"  Failed: {failed}")
+                if timeout > 0:
+                    print(f"  Timeout: {timeout}")
+                if error > 0:
+                    print(f"  Error: {error}")
+                print(f"  Total Kernel Time: {total_kernel_time_ms:.3f} ms")
+                print(f"  Total Kernels: {total_kernel_count}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Run address sanitizer kernel time experiments on AMD GPUs")
+    parser.add_argument(
+        "--repo",
+        type=str,
+        choices=["liger_kernel", "flag_gems", "tritonbench", "all"],
+        default="all",
+        help="Repository to test (default: all)"
+    )
+    args = parser.parse_args()
+
+    print("=" * 60)
+    print("Running Address Sanitizer Kernel Time Experiments (AMD)")
+    print("TRITON_ENABLE_ASAN: 1")
+    print("HSA_XNACK: 1")
+    print("=" * 60)
+    print()
+
+    # Set up ASAN environment (library paths, LD_PRELOAD, etc.)
+    setup_asan_environment()
+    print()
+
+    runner = KernelTimeAddressSanitizerAMDRunner()
+
+    # Determine which repos to use
+    if args.repo == "all":
+        repos = list(REPO_CONFIGS.keys())
+    else:
+        repos = [args.repo]
+
+    # Auto-load whitelists
+    whitelists = {}
+
+    for repo in repos:
+        whitelist_file = f"utils/{repo}_whitelist.txt"
+        whitelist = runner.load_whitelist(whitelist_file, repo)
+        if whitelist:
+            whitelists[repo] = whitelist
+            print(f"Loaded whitelist for {repo}")
+
+    print(f"\nOutput directory: {runner.output_base_dir}")
+    print(f"Repositories: {', '.join(repos)}")
+    print()
+
+    runner.run_all_tests(repos, whitelists)
+    runner.save_results_csv()
+    runner.print_summary()
+
+    print("\n" + "=" * 60)
+    print("Address sanitizer kernel time experiments completed!")
+    print(f"Results saved in: {runner.output_base_dir}")
+    print("=" * 60)
+
+
+if __name__ == "__main__":
+    main()
