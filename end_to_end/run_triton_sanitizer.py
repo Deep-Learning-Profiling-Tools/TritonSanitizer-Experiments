@@ -258,7 +258,7 @@ class TritonSanitizerRunner:
                 timeout=300,
                 text=True
             )
-            output = result.stdout
+            output = result.stdout or ""
 
             elapsed_time = time.time() - start_time
             success = result.returncode == 0

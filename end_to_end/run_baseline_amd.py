@@ -251,7 +251,7 @@ class BaselineAMDRunner:
                 timeout=300,
                 text=True
             )
-            output = result.stdout
+            output = result.stdout or ""
 
             elapsed_time = time.time() - start_time
             success = result.returncode == 0
@@ -407,6 +407,13 @@ def main():
         action="store_true",
         help="Enable memory profiling with /usr/bin/time -v"
     )
+    parser.add_argument(
+        "--repo",
+        type=str,
+        choices=["liger_kernel", "flag_gems", "tritonbench", "all"],
+        default="all",
+        help="Repository to test (default: all)"
+    )
     args = parser.parse_args()
 
     print("=" * 60)
@@ -419,9 +426,14 @@ def main():
 
     runner = BaselineAMDRunner(enable_memory=args.memory)
 
+    # Determine which repos to use
+    if args.repo == "all":
+        repos = list(REPO_CONFIGS.keys())
+    else:
+        repos = [args.repo]
+
     # Auto-load whitelists
     whitelists = {}
-    repos = list(REPO_CONFIGS.keys())
 
     for repo in repos:
         whitelist_file = f"utils/{repo}_whitelist.txt"
