@@ -367,14 +367,6 @@ class KernelTimeAddressSanitizerAMDRunner:
         env["TRITON_ENABLE_ASAN"] = "1"
         env["HSA_XNACK"] = "1"
 
-        # Convert CUDA to HIP memory caching env vars for AMD
-        if env.get("PYTORCH_NO_CUDA_MEMORY_CACHING") == "1":
-            env["PYTORCH_NO_HIP_MEMORY_CACHING"] = "1"
-            env["HSA_DISABLE_FRAGMENT_ALLOCATOR"] = "1"
-            env["AMD_PYTORCH_NO_CUDA_MEMORY_CACHING"] = "1"
-            env["AMDGCN_USE_BUFFER_OPS"] = "0"
-        env.pop("PYTORCH_NO_CUDA_MEMORY_CACHING", None)
-
         # Set LD_PRELOAD for ASAN libraries
         if os.environ.get("ASAN_LD_PRELOAD"):
             env["LD_PRELOAD"] = os.environ["ASAN_LD_PRELOAD"]
