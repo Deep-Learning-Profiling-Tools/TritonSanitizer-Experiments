@@ -443,6 +443,13 @@ class KernelTimeBaselineRunner:
 
 def main():
     parser = argparse.ArgumentParser(description="Run baseline kernel time experiments")
+    parser.add_argument(
+        "--repo",
+        type=str,
+        choices=["liger_kernel", "flag_gems", "tritonbench", "all"],
+        default="all",
+        help="Repository to test (default: all)"
+    )
     args = parser.parse_args()
 
     print("=" * 60)
@@ -452,9 +459,14 @@ def main():
 
     runner = KernelTimeBaselineRunner()
 
+    # Determine which repos to use
+    if args.repo == "all":
+        repos = list(REPO_CONFIGS.keys())
+    else:
+        repos = [args.repo]
+
     # Auto-load whitelists
     whitelists = {}
-    repos = list(REPO_CONFIGS.keys())
 
     for repo in repos:
         whitelist_file = f"utils/{repo}_whitelist.txt"
