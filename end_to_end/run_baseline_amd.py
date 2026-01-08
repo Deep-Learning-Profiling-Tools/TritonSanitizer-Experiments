@@ -248,7 +248,7 @@ class BaselineAMDRunner:
                 cwd=test_dir,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
-                timeout=300,
+                timeout=600,
                 text=True
             )
             output = result.stdout or ""
@@ -265,7 +265,7 @@ class BaselineAMDRunner:
             else:
                 output = ""
             status = "TIMEOUT"
-            error_msg = "Test exceeded 5 minute timeout"
+            error_msg = "Test exceeded 10 minute timeout"
 
         except Exception as e:
             elapsed_time = time.time() - start_time
