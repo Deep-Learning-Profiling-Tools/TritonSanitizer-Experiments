@@ -468,15 +468,10 @@ class AddressSanitizerRunner:
                 "test_function": test_info["test_function"] or ""
             }
 
-        # Skip compile_cache=on configurations (TRITON_ALWAYS_COMPILE=0)
-        skip_configs = ["baseline_no_compile_with_cache", "baseline_no_compile_no_cache"]
-        active_configs = {k: v for k, v in ENV_CONFIGS.items() if k not in skip_configs}
-
-        print(f"\nRunning tests with {len(active_configs)} configurations (TRITON_ENABLE_ASAN=1)")
-        print(f"Skipping compile_cache=on configs: {skip_configs}")
+        print(f"\nRunning tests with {len(ENV_CONFIGS)} configurations (TRITON_ENABLE_ASAN=1)")
         print("=" * 60)
 
-        for env_key, env_config in active_configs.items():
+        for env_key, env_config in ENV_CONFIGS.items():
             print(f"\nConfiguration: [{env_key}] {env_config['description']}")
             print("-" * 50)
 
@@ -498,9 +493,6 @@ class AddressSanitizerRunner:
         """Save test results to CSV file."""
         csv_file = self.script_dir / "results" / "results_address_sanitizer_amd.csv"
 
-        # Configurations that were skipped (compile_cache=on)
-        skip_configs = ["baseline_no_compile_with_cache", "baseline_no_compile_no_cache"]
-
         with open(csv_file, "w", newline="") as f:
             header = ["Test_Number", "Test_Name"]
             for env_key in ENV_CONFIGS.keys():
@@ -513,15 +505,11 @@ class AddressSanitizerRunner:
                 row = [data.get("test_number", ""), test_name]
 
                 for env_key in ENV_CONFIGS.keys():
-                    # Set skipped configs to 0
-                    if env_key in skip_configs:
-                        row.append(0)
+                    value = data.get(env_key, "N/A")
+                    if isinstance(value, float):
+                        row.append(f"{value:.4f}")
                     else:
-                        value = data.get(env_key, "N/A")
-                        if isinstance(value, float):
-                            row.append(f"{value:.4f}")
-                        else:
-                            row.append(value)
+                        row.append(value)
 
                 writer.writerow(row)
 
