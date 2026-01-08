@@ -405,7 +405,10 @@ class AddressSanitizerRunner:
 
         except subprocess.TimeoutExpired as e:
             elapsed_time = time.time() - start_time
-            output = e.stdout if e.stdout else ""
+            if e.stdout:
+                output = e.stdout.decode('utf-8', errors='replace') if isinstance(e.stdout, bytes) else e.stdout
+            else:
+                output = ""
             status = "TIMEOUT"
             error_msg = "Test exceeded 10 minute timeout"
 
