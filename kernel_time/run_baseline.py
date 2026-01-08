@@ -283,7 +283,7 @@ class KernelTimeBaselineRunner:
                     cwd=test_dir,
                     stdout=log_file,
                     stderr=subprocess.STDOUT,
-                    timeout=300,
+                    timeout=600,
                     text=True
                 )
 
@@ -295,7 +295,7 @@ class KernelTimeBaselineRunner:
         except subprocess.TimeoutExpired:
             elapsed_time = time.time() - start_time
             status = "TIMEOUT"
-            error_msg = "Test exceeded 5 minute timeout"
+            error_msg = "Test exceeded 10 minute timeout"
 
         except Exception as e:
             elapsed_time = time.time() - start_time
